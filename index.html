@@ -7,17 +7,18 @@
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f0f2f5; margin: 0; }
-        .blue-box { background-color: #adcbe3; width: 360px; min-height: 550px; padding: 40px; border: 1px solid #000; box-shadow: 4px 4px 0px #000; }
+        .blue-box { background-color: #adcbe3; width: 360px; min-height: 580px; padding: 40px; border: 1px solid #000; box-shadow: 4px 4px 0px #000; }
         .white-inner { background: white; padding: 25px; border: 1px solid #000; display: flex; flex-direction: column; gap: 12px; height: 100%; }
         .input-row { display: flex; gap: 8px; }
         input { flex: 1; padding: 12px; background: #adcbe3; border: 1px solid #000; font-weight: bold; }
         button { cursor: pointer; border: 1px solid #000; background: #adcbe3; font-weight: bold; text-transform: uppercase; }
         .main-btn { padding: 15px; font-size: 16px; width: 100%; margin-top: 5px; }
-        .details-area { flex-grow: 1; border: 1px solid #000; background: #d1e3f0; padding: 15px; min-height: 180px; }
+        .details-area { flex-grow: 1; border: 1px solid #000; background: #d1e3f0; padding: 15px; min-height: 200px; }
         #scanner-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); flex-direction: column; align-items: center; justify-content: center; z-index: 1000; }
         #reader { width: 320px; background: white; border: 2px solid #adcbe3; }
         .hidden { display: none; }
-        .warning-text { color: red; font-weight: bold; font-size: 13px; margin-top: 10px; }
+        .loan-warning { color: red; font-weight: bold; font-size: 13px; margin-top: 10px; }
+        .student-name { font-size: 16px; font-weight: bold; color: #333; margin-bottom: 5px; }
     </style>
 </head>
 <body>
@@ -42,7 +43,11 @@
                         <input type="text" id="studentId" placeholder="STUDENT ID" style="background: white;">
                         <button onclick="verifyStudent()" style="padding: 0 10px;">✔️</button>
                     </div>
-                    <div id="student-status-msg"></div>
+                    
+                    <div id="student-display" style="margin-top: 15px;">
+                        <div id="student-name-field" class="student-name"></div>
+                        <div id="loan-msg-area"></div>
+                    </div>
                 </div>
 
                 <div id="action-buttons" class="hidden">
@@ -63,6 +68,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
         import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js";
 
+        // Your Firebase Configuration
         const firebaseConfig = {
             apiKey: "AIzaSyCF-9XTUu7USBk6vXtuN2140tlgXg-PgBM",
             authDomain: "school-library-61744.firebaseapp.com",
@@ -80,7 +86,8 @@
             document.getElementById('search-view').classList.remove('hidden');
             document.getElementById('details-view').classList.add('hidden');
             document.getElementById('action-buttons').classList.add('hidden');
-            document.getElementById('student-status-msg').innerHTML = '';
+            document.getElementById('loan-msg-area').innerHTML = '';
+            document.getElementById('student-name-field').innerText = '';
             document.getElementById('studentId').value = '';
             document.getElementById('isbn-search').value = '';
         };
@@ -115,34 +122,41 @@
 
         window.verifyStudent = async () => {
             const sid = document.getElementById('studentId').value.trim();
-            const msgArea = document.getElementById('student-status-msg');
+            const nameField = document.getElementById('student-name-field');
+            const loanArea = document.getElementById('loan-msg-area');
             const actionBtns = document.getElementById('action-buttons');
             
             if (!sid) return;
-            msgArea.innerHTML = "Checking...";
+            loanArea.innerHTML = "Verifying...";
+            nameField.innerText = "";
 
             const studentSnap = await getDoc(doc(db, "students", sid));
             
             if (!studentSnap.exists()) {
-                msgArea.innerHTML = "<p class='warning-text'>STUDENT NOT REGISTERED IN LIBRARY</p>";
+                loanArea.innerHTML = "<p class='loan-warning'>STUDENT NOT REGISTERED</p>";
                 actionBtns.classList.add('hidden');
                 return;
             }
 
             const data = studentSnap.data();
-            let unreturned = [];
             
-            // Check the student's book map for status: "borrowed"
+            // Display student name if available in the doc
+            nameField.innerText = data.studentName || data.name || "Student: " + sid;
+
+            let loans = [];
+            
+            // Check for status: "borrowed"
             for (const [isbn, info] of Object.entries(data)) {
-                if (info.status === "borrowed") {
-                    unreturned.push(info.title || isbn);
+                // Ignore the name field itself if it exists as a key
+                if (typeof info === 'object' && info !== null && info.status === "borrowed") {
+                    loans.push(info.title || isbn);
                 }
             }
 
-            if (unreturned.length > 0) {
-                msgArea.innerHTML = `<p class='warning-text'>LOAN:<br>${unreturned.join(', ')}</p>`;
+            if (loans.length > 0) {
+                loanArea.innerHTML = `<p class='loan-warning'>CURRENT LOAN:<br>${loans.join(', ')}</p>`;
             } else {
-                msgArea.innerHTML = "<p style='color: green; font-weight: bold;'>Clear to proceed</p>";
+                loanArea.innerHTML = "<p style='color: green; font-weight: bold;'>No active loans</p>";
             }
             
             actionBtns.classList.remove('hidden');
@@ -155,7 +169,7 @@
             const timestamp = new Date().toLocaleString();
 
             try {
-                // Update Student Record
+                // Update Student Record Map
                 await setDoc(doc(db, "students", sid), {
                     [isbn]: {
                         title: bName,
@@ -165,7 +179,7 @@
                     }
                 }, { merge: true });
 
-                // Update Book History
+                // Update Book Borrow History array
                 await updateDoc(doc(db, "books", isbn), {
                     borrowHistory: arrayUnion({ studentId: sid, date: timestamp, action: type })
                 });
@@ -179,4 +193,3 @@
     </script>
 </body>
 </html>
-
