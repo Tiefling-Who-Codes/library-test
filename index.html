@@ -6,19 +6,20 @@
     <title>School Library Manager</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f0f2f5; margin: 0; }
-        .blue-box { background-color: #adcbe3; width: 360px; min-height: 580px; padding: 40px; border: 1px solid #000; box-shadow: 4px 4px 0px #000; }
-        .white-inner { background: white; padding: 25px; border: 1px solid #000; display: flex; flex-direction: column; gap: 12px; height: 100%; }
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #f0f2f5; margin: 0; padding: 20px; }
+        .blue-box { background-color: #adcbe3; width: 380px; padding: 30px; border: 1px solid #000; box-shadow: 4px 4px 0px #000; }
+        .white-inner { background: white; padding: 20px; border: 1px solid #000; display: flex; flex-direction: column; gap: 10px; }
         .input-row { display: flex; gap: 8px; }
-        input { flex: 1; padding: 12px; background: #adcbe3; border: 1px solid #000; font-weight: bold; }
+        input { flex: 1; padding: 10px; background: #adcbe3; border: 1px solid #000; font-weight: bold; }
         button { cursor: pointer; border: 1px solid #000; background: #adcbe3; font-weight: bold; text-transform: uppercase; }
         .main-btn { padding: 15px; font-size: 16px; width: 100%; margin-top: 5px; }
-        .details-area { flex-grow: 1; border: 1px solid #000; background: #d1e3f0; padding: 15px; min-height: 200px; }
+        .details-area { border: 1px solid #000; background: #d1e3f0; padding: 12px; font-size: 13px; line-height: 1.4; }
+        .label { font-weight: bold; color: #555; text-transform: uppercase; font-size: 10px; display: block; margin-top: 4px; }
+        .value { font-weight: bold; color: #000; font-size: 14px; margin-bottom: 8px; display: block; }
+        .loan-text { color: red; font-weight: bold; border-top: 1px dashed #000; pt: 8px; margin-top: 8px; }
         #scanner-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); flex-direction: column; align-items: center; justify-content: center; z-index: 1000; }
         #reader { width: 320px; background: white; border: 2px solid #adcbe3; }
         .hidden { display: none; }
-        .loan-warning { color: red; font-weight: bold; font-size: 13px; margin-top: 10px; }
-        .student-name { font-size: 16px; font-weight: bold; color: #333; margin-bottom: 5px; }
     </style>
 </head>
 <body>
@@ -26,7 +27,7 @@
     <div class="blue-box">
         <div class="white-inner">
             <div id="search-view">
-                <div class="input-row" style="margin-bottom: 20px;">
+                <div class="input-row" style="margin-bottom: 15px;">
                     <input type="text" id="isbn-search" placeholder="ISBN">
                     <button style="padding: 10px;" onclick="openScanner()">SCAN</button>
                 </div>
@@ -34,19 +35,25 @@
             </div>
 
             <div id="details-view" class="hidden">
-                <input type="text" id="display-isbn" readonly>
-                <input type="text" id="display-name" readonly>
-                
+                <div class="details-area" id="book-details" style="background: #e1edf7;">
+                    <span class="label">Book Name</span>
+                    <span class="value" id="disp-book-name">---</span>
+                    <span class="label">Author / ISBN</span>
+                    <span class="value" id="disp-book-meta">---</span>
+                </div>
+
                 <div class="details-area">
-                    <p style="margin: 0 0 10px 0; font-size: 13px;">Enter Student ID to proceed:</p>
+                    <span class="label">Verify Student ID</span>
                     <div class="input-row">
-                        <input type="text" id="studentId" placeholder="STUDENT ID" style="background: white;">
+                        <input type="text" id="studentId" placeholder="ID NO" style="background: white;">
                         <button onclick="verifyStudent()" style="padding: 0 10px;">✔️</button>
                     </div>
-                    
-                    <div id="student-display" style="margin-top: 15px;">
-                        <div id="student-name-field" class="student-name"></div>
-                        <div id="loan-msg-area"></div>
+                    <div id="student-data-display" class="hidden" style="margin-top: 10px;">
+                        <span class="label">Full Name</span>
+                        <span class="value" id="disp-student-name">---</span>
+                        <span class="label">Tutor / Year / User</span>
+                        <span class="value" id="disp-student-meta">---</span>
+                        <div id="loan-list" class="loan-text"></div>
                     </div>
                 </div>
 
@@ -54,7 +61,7 @@
                     <button class="main-btn" onclick="handleTransaction('borrow')">BORROW</button>
                     <button class="main-btn" onclick="handleTransaction('return')">RETURN</button>
                 </div>
-                <button style="background: none; border: none; text-decoration: underline; font-size: 12px; margin-top: 10px;" onclick="resetUI()">← BACK TO SEARCH</button>
+                <button style="background: none; border: none; text-decoration: underline; font-size: 11px; align-self: center;" onclick="resetUI()">← NEW SEARCH</button>
             </div>
         </div>
     </div>
@@ -68,7 +75,6 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
         import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js";
 
-        // Your Firebase Configuration
         const firebaseConfig = {
             apiKey: "AIzaSyCF-9XTUu7USBk6vXtuN2140tlgXg-PgBM",
             authDomain: "school-library-61744.firebaseapp.com",
@@ -85,9 +91,8 @@
         window.resetUI = () => {
             document.getElementById('search-view').classList.remove('hidden');
             document.getElementById('details-view').classList.add('hidden');
+            document.getElementById('student-data-display').classList.add('hidden');
             document.getElementById('action-buttons').classList.add('hidden');
-            document.getElementById('loan-msg-area').innerHTML = '';
-            document.getElementById('student-name-field').innerText = '';
             document.getElementById('studentId').value = '';
             document.getElementById('isbn-search').value = '';
         };
@@ -102,93 +107,69 @@
             });
         };
 
-        window.closeScanner = () => {
-            if (scanner) scanner.clear();
-            document.getElementById('scanner-modal').style.display = 'none';
-        };
+        window.closeScanner = () => { if (scanner) scanner.clear(); document.getElementById('scanner-modal').style.display = 'none'; };
 
         window.lookupBook = async () => {
             const isbn = document.getElementById('isbn-search').value.trim();
             if (!isbn) return;
-            const bookSnap = await getDoc(doc(db, "books", isbn));
-            if (!bookSnap.exists()) return alert("Book not found in library system.");
-            
-            const data = bookSnap.data();
-            document.getElementById('display-isbn').value = isbn;
-            document.getElementById('display-name').value = data.name || data.title;
+            const snap = await getDoc(doc(db, "books", isbn));
+            if (!snap.exists()) return alert("Book record missing!");
+            const data = snap.data();
+            document.getElementById('disp-book-name').innerText = data.name || "Unknown";
+            document.getElementById('disp-book-meta').innerText = `${data.author || 'No Author'} | ISBN: ${isbn}`;
             document.getElementById('search-view').classList.add('hidden');
             document.getElementById('details-view').classList.remove('hidden');
         };
 
         window.verifyStudent = async () => {
             const sid = document.getElementById('studentId').value.trim();
-            const nameField = document.getElementById('student-name-field');
-            const loanArea = document.getElementById('loan-msg-area');
-            const actionBtns = document.getElementById('action-buttons');
-            
             if (!sid) return;
-            loanArea.innerHTML = "Verifying...";
-            nameField.innerText = "";
-
-            const studentSnap = await getDoc(doc(db, "students", sid));
-            
-            if (!studentSnap.exists()) {
-                loanArea.innerHTML = "<p class='loan-warning'>STUDENT NOT REGISTERED</p>";
-                actionBtns.classList.add('hidden');
-                return;
-            }
-
-            const data = studentSnap.data();
-            
-            // Display student name if available in the doc
-            nameField.innerText = data.studentName || data.name || "Student: " + sid;
-
+            const snap = await getDoc(doc(db, "students", sid));
+            if (!snap.exists()) return alert("Student not found!");
+            const d = snap.data();
+            document.getElementById('disp-student-name').innerText = `${d.Name} ${d["Last Name"]}`;
+            document.getElementById('disp-student-meta').innerText = `Tutor: ${d.Tutor} | Yr: ${d.Year} | @${d.username}`;
             let loans = [];
-            
-            // Check for status: "borrowed"
-            for (const [isbn, info] of Object.entries(data)) {
-                // Ignore the name field itself if it exists as a key
-                if (typeof info === 'object' && info !== null && info.status === "borrowed") {
-                    loans.push(info.title || isbn);
-                }
+            for (const [key, val] of Object.entries(d)) {
+                if (typeof val === 'object' && val?.status === "borrowed") loans.push(val.title || key);
             }
-
-            if (loans.length > 0) {
-                loanArea.innerHTML = `<p class='loan-warning'>CURRENT LOAN:<br>${loans.join(', ')}</p>`;
-            } else {
-                loanArea.innerHTML = "<p style='color: green; font-weight: bold;'>No active loans</p>";
-            }
-            
-            actionBtns.classList.remove('hidden');
+            document.getElementById('loan-list').innerText = loans.length > 0 ? `LOAN: ${loans.join(', ')}` : "No current loans";
+            document.getElementById('student-data-display').classList.remove('hidden');
+            document.getElementById('action-buttons').classList.remove('hidden');
         };
 
         window.handleTransaction = async (type) => {
             const sid = document.getElementById('studentId').value.trim();
-            const isbn = document.getElementById('display-isbn').value;
-            const bName = document.getElementById('display-name').value;
-            const timestamp = new Date().toLocaleString();
+            const isbn = document.getElementById('isbn-search').value.trim();
+            const bName = document.getElementById('disp-book-name').innerText;
+            const time = new Date().toLocaleString();
+            
+            // CHECK FOR ACTIVE LOAN
+            const hasActiveLoan = document.getElementById('loan-list').innerText.includes("LOAN:");
+
+            if (type === 'borrow' && hasActiveLoan) {
+                const pin = prompt("STUDENT ALREADY HAS A LOAN. Enter Admin PIN to override:");
+                if (!pin) return;
+
+                const adminSnap = await getDoc(doc(db, "admin", pin));
+                if (!adminSnap.exists()) {
+                    return alert("INVALID ADMIN PIN. Borrowing blocked.");
+                }
+                alert(`Admin Override Verified: ${adminSnap.data().Name}`);
+            }
 
             try {
-                // Update Student Record Map
                 await setDoc(doc(db, "students", sid), {
-                    [isbn]: {
-                        title: bName,
-                        borrowDate: type === 'borrow' ? timestamp : null,
-                        returnDate: type === 'return' ? timestamp : null,
-                        status: type === 'borrow' ? "borrowed" : "returned"
-                    }
+                    [isbn]: { title: bName, borrowDate: type === 'borrow' ? time : null, status: type === 'borrow' ? "borrowed" : "returned" }
                 }, { merge: true });
 
-                // Update Book Borrow History array
                 await updateDoc(doc(db, "books", isbn), {
-                    borrowHistory: arrayUnion({ studentId: sid, date: timestamp, action: type })
+                    borrowHistory: arrayUnion({ studentId: sid, date: time, action: type })
                 });
 
-                alert(`${type.toUpperCase()} SUCCESSFUL`);
+                alert(`SUCCESS: ${type.toUpperCase()} COMPLETED`);
                 resetUI();
-            } catch (e) {
-                alert("Transaction failed: " + e.message);
-            }
+            } catch (e) { alert("Error: " + e.message); }
         };
     </script>
 </body>
