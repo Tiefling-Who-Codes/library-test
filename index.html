@@ -7,32 +7,51 @@
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f0f2f5; margin: 0; }
-        .blue-box { background-color: #adcbe3; width: 360px; padding: 40px; border: 1px solid #000; box-shadow: 4px 4px 0px #000; }
-        .white-inner { background: white; padding: 25px; border: 1px solid #000; display: flex; flex-direction: column; gap: 15px; }
+        .blue-box { background-color: #adcbe3; width: 360px; min-height: 520px; padding: 40px; border: 1px solid #000; box-shadow: 4px 4px 0px #000; }
+        .white-inner { background: white; padding: 25px; border: 1px solid #000; display: flex; flex-direction: column; gap: 15px; height: 100%; }
+        
         .input-row { display: flex; gap: 8px; }
         input { flex: 1; padding: 12px; background: #adcbe3; border: 1px solid #000; font-weight: bold; }
-        button { cursor: pointer; border: 1px solid #000; background: #adcbe3; font-weight: bold; }
+        button { cursor: pointer; border: 1px solid #000; background: #adcbe3; font-weight: bold; text-transform: uppercase; }
+        
         .scan-btn { padding: 5px 12px; }
-        .main-btn { padding: 18px; font-size: 18px; width: 100%; text-transform: uppercase; margin-top: 5px;}
+        .main-btn { padding: 15px; font-size: 16px; width: 100%; }
+        
+        .details-area { 
+            flex-grow: 1; border: 1px solid #000; background: #d1e3f0; 
+            padding: 10px; font-size: 14px; min-height: 150px; overflow-y: auto;
+        }
+
         #scanner-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); flex-direction: column; align-items: center; justify-content: center; z-index: 1000; }
         #reader { width: 320px; background: white; border: 2px solid #adcbe3; }
+        .hidden { display: none; }
     </style>
 </head>
 <body>
 
     <div class="blue-box">
         <div class="white-inner">
-            <div class="input-row">
-                <input type="text" id="studentId" placeholder="STUDENT NO">
-                <button class="scan-btn" onclick="openScanner('studentId')">SCAN</button>
+            <div id="search-view">
+                <div class="input-row" style="margin-bottom: 20px;">
+                    <input type="text" id="isbn-search" placeholder="ISBN">
+                    <button class="scan-btn" onclick="openScanner()">SCAN</button>
+                </div>
+                <button class="main-btn" onclick="lookupBook()">GO</button>
             </div>
-            <div class="input-row">
-                <input type="text" id="isbn" placeholder="ISBN">
-                <button class="scan-btn" onclick="openScanner('isbn')">SCAN</button>
+
+            <div id="details-view" class="hidden">
+                <input type="text" id="display-isbn" readonly>
+                <input type="text" id="display-name" readonly>
+                
+                <div class="details-area" id="student-info">
+                    <p style="color: #555;">Enter Student ID to proceed:</p>
+                    <input type="text" id="studentId" placeholder="STUDENT ID" style="width: 80%; background: white;">
+                </div>
+
+                <button class="main-btn" id="borrow-btn" onclick="handleTransaction('borrow')">BORROW</button>
+                <button class="main-btn" id="return-btn" onclick="handleTransaction('return')">RETURN</button>
+                <button style="background: none; border: none; text-decoration: underline; font-size: 12px;" onclick="resetUI()">← Back to Search</button>
             </div>
-            
-            <button class="main-btn" onclick="handleTransaction('borrow')">BORROW</button>
-            <button class="main-btn" onclick="handleTransaction('return')">RETURN</button>
         </div>
     </div>
 
@@ -45,7 +64,6 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
         import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js";
 
-        // Your Web App Configuration
         const firebaseConfig = {
             apiKey: "AIzaSyCF-9XTUu7USBk6vXtuN2140tlgXg-PgBM",
             authDomain: "school-library-61744.firebaseapp.com",
@@ -59,15 +77,22 @@
         const db = getFirestore(app);
 
         let scanner = null;
-        let currentTarget = '';
 
-        window.openScanner = (id) => {
-            currentTarget = id;
+        // UI NAVIGATION
+        window.resetUI = () => {
+            document.getElementById('search-view').classList.remove('hidden');
+            document.getElementById('details-view').classList.add('hidden');
+            document.getElementById('isbn-search').value = '';
+        };
+
+        // SCANNER LOGIC
+        window.openScanner = () => {
             document.getElementById('scanner-modal').style.display = 'flex';
             scanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 150} });
             scanner.render((text) => {
-                document.getElementById(currentTarget).value = text;
+                document.getElementById('isbn-search').value = text;
                 closeScanner();
+                lookupBook();
             });
         };
 
@@ -76,36 +101,51 @@
             document.getElementById('scanner-modal').style.display = 'none';
         };
 
-        window.handleTransaction = async (type) => {
-            const sid = document.getElementById('studentId').value.trim();
-            const isbn = document.getElementById('isbn').value.trim();
-
-            if (!sid || !isbn) return alert("Please fill Student ID and ISBN");
+        // LOOKUP LOGIC
+        window.lookupBook = async () => {
+            const isbn = document.getElementById('isbn-search').value.trim();
+            if (!isbn) return alert("Enter ISBN");
 
             try {
+                const bookSnap = await getDoc(doc(db, "books", isbn));
+                if (!bookSnap.exists()) return alert("Book not found!");
+
+                const data = bookSnap.data();
+                document.getElementById('display-isbn').value = isbn;
+                document.getElementById('display-name').value = data.name || data.title || "Unknown Title";
+                
+                // Show the details view
+                document.getElementById('search-view').classList.add('hidden');
+                document.getElementById('details-view').classList.remove('hidden');
+            } catch (e) {
+                alert("Error: " + e.message);
+            }
+        };
+
+        // FINAL TRANSACTION
+        window.handleTransaction = async (type) => {
+            const sid = document.getElementById('studentId').value.trim();
+            const isbn = document.getElementById('display-isbn').value;
+            const bName = document.getElementById('display-name').value;
+
+            if (!sid) return alert("Please enter Student ID");
+
+            try {
+                const timestamp = new Date().toLocaleString();
                 const bookRef = doc(db, "books", isbn);
                 const studentRef = doc(db, "students", sid);
 
-                // 1. Get current book details
-                const bookSnap = await getDoc(bookRef);
-                if (!bookSnap.exists()) {
-                    return alert("Book not found in 'books' collection. Check ISBN!");
-                }
-                const bookData = bookSnap.data();
-                const timestamp = new Date().toLocaleString();
-
-                // 2. Update Student Map (Overwrites existing ISBN map entry)
-                const studentUpdate = {
+                // 1. Update Student Map
+                await setDoc(studentRef, {
                     [isbn]: {
-                        title: bookData.name || bookData.title || "Unknown",
+                        title: bName,
                         borrowDate: type === 'borrow' ? timestamp : null,
                         returnDate: type === 'return' ? timestamp : null,
                         status: type === 'borrow' ? "borrowed" : "returned"
                     }
-                };
-                await setDoc(studentRef, studentUpdate, { merge: true });
+                }, { merge: true });
 
-                // 3. Update Book History (Appends to the book document directly)
+                // 2. Update Book History
                 await updateDoc(bookRef, {
                     borrowHistory: arrayUnion({
                         studentId: sid,
@@ -114,12 +154,10 @@
                     })
                 });
 
-                alert(`Success: ${bookData.name || isbn} ${type}ed!`);
-                document.getElementById('isbn').value = ''; 
-
-            } catch (error) {
-                console.error("Firestore Error:", error);
-                alert("Error: " + error.message);
+                alert(`SUCCESS: Book ${type}ed!`);
+                resetUI();
+            } catch (e) {
+                alert("Error: " + e.message);
             }
         };
     </script>
