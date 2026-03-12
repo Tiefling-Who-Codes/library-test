@@ -53,66 +53,56 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, updateDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-        // Your specific config from config.js
-        const firebaseConfig = {
-            apiKey: "AIzaSyCklU7HYXiz5ZHQ5bo6maEHJtnTD8v139I",
-            authDomain: "e-lib-a32b1.firebaseapp.com",
-            projectId: "e-lib-a32b1",
-            storageBucket: "e-lib-a32b1.appspot.com",
-            messagingSenderId: "516724940823",
-            appId: "1:516724940823:web:39dfbbe3aee866aea9fc52"
-        };
+// Your Firebase Config (Keep yours here!)
+const firebaseConfig = { /* ... your config ... */ };
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
+window.handleTx = async (type) => {
+    const studentId = document.getElementById('studentId').value.trim();
+    const isbn = document.getElementById('isbn').value.trim();
 
-        let activeInputId = '';
-        let html5QrcodeScanner = null;
+    if (!studentId || !isbn) return alert("Fill both fields first!");
 
-        // Open Scanner
-        window.openScanner = (inputId) => {
-            activeInputId = inputId;
-            document.getElementById('scanner-modal').style.display = 'flex';
-            
-            html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 });
-            html5QrcodeScanner.render((text) => {
-                document.getElementById(activeInputId).value = text;
-                closeScanner();
-            });
-        };
+    try {
+        // 1. First, check if the book exists in the 'books' collection
+        const bookRef = doc(db, "books", isbn);
+        const bookSnap = await getDoc(bookRef);
 
-        // Close Scanner
-        window.closeScanner = () => {
-            if (html5QrcodeScanner) {
-                html5QrcodeScanner.clear();
-            }
-            document.getElementById('scanner-modal').style.display = 'none';
-        };
+        if (!bookSnap.exists()) {
+            return alert("Error: This ISBN does not exist in the 'books' library collection.");
+        }
 
-        // Borrow / Return Logic
-        window.handleTx = async (type) => {
-            const studentId = document.getElementById('studentId').value;
-            const isbn = document.getElementById('isbn').value;
+        const bookData = bookSnap.data();
+        const studentRef = doc(db, "students", studentId);
 
-            if (!studentId || !isbn) return alert("Fill both fields first!");
-
-            try {
-                await addDoc(collection(db, "transactions"), {
-                    studentId,
-                    bookId: isbn,
-                    type: type,
-                    timestamp: serverTimestamp()
-                });
-                alert(`Book ${type}ed successfully!`);
-                document.getElementById('studentId').value = '';
-                document.getElementById('isbn').value = '';
-            } catch (e) {
-                console.error(e);
-                alert("Error saving to Firebase. Check console.");
+        // 2. Prepare the data for the Map
+        // We use dot notation (e.g., "978123.status") to update a specific map key
+        const loanInfo = {
+            [`${isbn}`]: {
+                title: bookData.title || "Unknown Title",
+                borrowDate: type === 'borrow' ? new Date().toLocaleString() : null,
+                returnDate: type === 'return' ? new Date().toLocaleString() : null,
+                status: type === 'borrow' ? "borrowed" : "returned"
             }
         };
+
+        // 3. Update the student document. 
+        // { merge: true } ensures we don't delete other books they've borrowed!
+        await setDoc(studentRef, loanInfo, { merge: true });
+
+        alert(`Success! Book ${isbn} marked as ${type}ed for Student ${studentId}`);
+        
+        // Clear fields
+        document.getElementById('isbn').value = '';
+    } catch (e) {
+        console.error("Full Error:", e);
+        alert("Firestore Error: check console. Make sure your rules allow 'students' collection access.");
+    }
+};
     </script>
 </body>
 </html>
+
