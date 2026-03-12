@@ -7,24 +7,17 @@
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f0f2f5; margin: 0; }
-        .blue-box { background-color: #adcbe3; width: 360px; min-height: 520px; padding: 40px; border: 1px solid #000; box-shadow: 4px 4px 0px #000; }
-        .white-inner { background: white; padding: 25px; border: 1px solid #000; display: flex; flex-direction: column; gap: 15px; height: 100%; }
-        
+        .blue-box { background-color: #adcbe3; width: 360px; min-height: 550px; padding: 40px; border: 1px solid #000; box-shadow: 4px 4px 0px #000; }
+        .white-inner { background: white; padding: 25px; border: 1px solid #000; display: flex; flex-direction: column; gap: 12px; height: 100%; }
         .input-row { display: flex; gap: 8px; }
         input { flex: 1; padding: 12px; background: #adcbe3; border: 1px solid #000; font-weight: bold; }
         button { cursor: pointer; border: 1px solid #000; background: #adcbe3; font-weight: bold; text-transform: uppercase; }
-        
-        .scan-btn { padding: 5px 12px; }
-        .main-btn { padding: 15px; font-size: 16px; width: 100%; }
-        
-        .details-area { 
-            flex-grow: 1; border: 1px solid #000; background: #d1e3f0; 
-            padding: 10px; font-size: 14px; min-height: 150px; overflow-y: auto;
-        }
-
+        .main-btn { padding: 15px; font-size: 16px; width: 100%; margin-top: 5px; }
+        .details-area { flex-grow: 1; border: 1px solid #000; background: #d1e3f0; padding: 15px; min-height: 180px; }
         #scanner-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); flex-direction: column; align-items: center; justify-content: center; z-index: 1000; }
         #reader { width: 320px; background: white; border: 2px solid #adcbe3; }
         .hidden { display: none; }
+        .warning-text { color: red; font-weight: bold; font-size: 13px; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -34,7 +27,7 @@
             <div id="search-view">
                 <div class="input-row" style="margin-bottom: 20px;">
                     <input type="text" id="isbn-search" placeholder="ISBN">
-                    <button class="scan-btn" onclick="openScanner()">SCAN</button>
+                    <button style="padding: 10px;" onclick="openScanner()">SCAN</button>
                 </div>
                 <button class="main-btn" onclick="lookupBook()">GO</button>
             </div>
@@ -43,14 +36,20 @@
                 <input type="text" id="display-isbn" readonly>
                 <input type="text" id="display-name" readonly>
                 
-                <div class="details-area" id="student-info">
-                    <p style="color: #555;">Enter Student ID to proceed:</p>
-                    <input type="text" id="studentId" placeholder="STUDENT ID" style="width: 80%; background: white;">
+                <div class="details-area">
+                    <p style="margin: 0 0 10px 0; font-size: 13px;">Enter Student ID to proceed:</p>
+                    <div class="input-row">
+                        <input type="text" id="studentId" placeholder="STUDENT ID" style="background: white;">
+                        <button onclick="verifyStudent()" style="padding: 0 10px;">✔️</button>
+                    </div>
+                    <div id="student-status-msg"></div>
                 </div>
 
-                <button class="main-btn" id="borrow-btn" onclick="handleTransaction('borrow')">BORROW</button>
-                <button class="main-btn" id="return-btn" onclick="handleTransaction('return')">RETURN</button>
-                <button style="background: none; border: none; text-decoration: underline; font-size: 12px;" onclick="resetUI()">← Back to Search</button>
+                <div id="action-buttons" class="hidden">
+                    <button class="main-btn" onclick="handleTransaction('borrow')">BORROW</button>
+                    <button class="main-btn" onclick="handleTransaction('return')">RETURN</button>
+                </div>
+                <button style="background: none; border: none; text-decoration: underline; font-size: 12px; margin-top: 10px;" onclick="resetUI()">← BACK TO SEARCH</button>
             </div>
         </div>
     </div>
@@ -75,17 +74,17 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
-
         let scanner = null;
 
-        // UI NAVIGATION
         window.resetUI = () => {
             document.getElementById('search-view').classList.remove('hidden');
             document.getElementById('details-view').classList.add('hidden');
+            document.getElementById('action-buttons').classList.add('hidden');
+            document.getElementById('student-status-msg').innerHTML = '';
+            document.getElementById('studentId').value = '';
             document.getElementById('isbn-search').value = '';
         };
 
-        // SCANNER LOGIC
         window.openScanner = () => {
             document.getElementById('scanner-modal').style.display = 'flex';
             scanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 150} });
@@ -101,42 +100,63 @@
             document.getElementById('scanner-modal').style.display = 'none';
         };
 
-        // LOOKUP LOGIC
         window.lookupBook = async () => {
             const isbn = document.getElementById('isbn-search').value.trim();
-            if (!isbn) return alert("Enter ISBN");
-
-            try {
-                const bookSnap = await getDoc(doc(db, "books", isbn));
-                if (!bookSnap.exists()) return alert("Book not found!");
-
-                const data = bookSnap.data();
-                document.getElementById('display-isbn').value = isbn;
-                document.getElementById('display-name').value = data.name || data.title || "Unknown Title";
-                
-                // Show the details view
-                document.getElementById('search-view').classList.add('hidden');
-                document.getElementById('details-view').classList.remove('hidden');
-            } catch (e) {
-                alert("Error: " + e.message);
-            }
+            if (!isbn) return;
+            const bookSnap = await getDoc(doc(db, "books", isbn));
+            if (!bookSnap.exists()) return alert("Book not found in library system.");
+            
+            const data = bookSnap.data();
+            document.getElementById('display-isbn').value = isbn;
+            document.getElementById('display-name').value = data.name || data.title;
+            document.getElementById('search-view').classList.add('hidden');
+            document.getElementById('details-view').classList.remove('hidden');
         };
 
-        // FINAL TRANSACTION
+        window.verifyStudent = async () => {
+            const sid = document.getElementById('studentId').value.trim();
+            const msgArea = document.getElementById('student-status-msg');
+            const actionBtns = document.getElementById('action-buttons');
+            
+            if (!sid) return;
+            msgArea.innerHTML = "Checking...";
+
+            const studentSnap = await getDoc(doc(db, "students", sid));
+            
+            if (!studentSnap.exists()) {
+                msgArea.innerHTML = "<p class='warning-text'>STUDENT NOT REGISTERED IN LIBRARY</p>";
+                actionBtns.classList.add('hidden');
+                return;
+            }
+
+            const data = studentSnap.data();
+            let unreturned = [];
+            
+            // Check the student's book map for status: "borrowed"
+            for (const [isbn, info] of Object.entries(data)) {
+                if (info.status === "borrowed") {
+                    unreturned.push(info.title || isbn);
+                }
+            }
+
+            if (unreturned.length > 0) {
+                msgArea.innerHTML = `<p class='warning-text'>OVERDUE/UNRETURNED:<br>${unreturned.join(', ')}</p>`;
+            } else {
+                msgArea.innerHTML = "<p style='color: green; font-weight: bold;'>Clear to proceed</p>";
+            }
+            
+            actionBtns.classList.remove('hidden');
+        };
+
         window.handleTransaction = async (type) => {
             const sid = document.getElementById('studentId').value.trim();
             const isbn = document.getElementById('display-isbn').value;
             const bName = document.getElementById('display-name').value;
-
-            if (!sid) return alert("Please enter Student ID");
+            const timestamp = new Date().toLocaleString();
 
             try {
-                const timestamp = new Date().toLocaleString();
-                const bookRef = doc(db, "books", isbn);
-                const studentRef = doc(db, "students", sid);
-
-                // 1. Update Student Map
-                await setDoc(studentRef, {
+                // Update Student Record
+                await setDoc(doc(db, "students", sid), {
                     [isbn]: {
                         title: bName,
                         borrowDate: type === 'borrow' ? timestamp : null,
@@ -145,19 +165,15 @@
                     }
                 }, { merge: true });
 
-                // 2. Update Book History
-                await updateDoc(bookRef, {
-                    borrowHistory: arrayUnion({
-                        studentId: sid,
-                        date: timestamp,
-                        action: type
-                    })
+                // Update Book History
+                await updateDoc(doc(db, "books", isbn), {
+                    borrowHistory: arrayUnion({ studentId: sid, date: timestamp, action: type })
                 });
 
-                alert(`SUCCESS: Book ${type}ed!`);
+                alert(`${type.toUpperCase()} SUCCESSFUL`);
                 resetUI();
             } catch (e) {
-                alert("Error: " + e.message);
+                alert("Transaction failed: " + e.message);
             }
         };
     </script>
