@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>School Library App</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    
+    <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f4f4f4; margin: 0; }
+        .blue-container { background-color: #adcbe3; width: 350px; padding: 40px; border: 1px solid #000; box-shadow: 5px 5px 0px #888; }
+        .white-inner { background: white; padding: 20px; border: 1px solid #000; display: flex; flex-direction: column; gap: 15px; }
+        
+        .input-group { display: flex; gap: 5px; }
+        input { flex: 1; padding: 10px; background: #adcbe3; border: 1px solid #000; outline: none; }
+        
+        button { cursor: pointer; border: 1px solid #000; background: #adcbe3; transition: 0.2s; }
+        button:hover { background: #96b9d6; }
+        .scan-btn { padding: 5px 10px; }
+        .action-btn { padding: 15px; font-size: 18px; width: 100%; margin-top: 5px; }
+        
+        /* Scanner Overlay */
+        #scanner-modal { 
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.8); flex-direction: column; align-items: center; justify-content: center; 
+        }
+        #reader { width: 300px; background: white; border-radius: 8px; overflow: hidden; }
+        .close-scanner { margin-top: 20px; color: white; background: red; padding: 10px; border: none; }
+    </style>
+</head>
+<body>
+
+    <div class="blue-container">
+        <div class="white-inner">
+            <div class="input-group">
+                <input type="text" id="studentId" placeholder="Student no">
+                <button class="scan-btn" onclick="openScanner('studentId')">scan</button>
+            </div>
+            <div class="input-group">
+                <input type="text" id="isbn" placeholder="isbn">
+                <button class="scan-btn" onclick="openScanner('isbn')">scan</button>
+            </div>
+            
+            <button class="action-btn" onclick="handleTx('borrow')">borrow</button>
+            <button class="action-btn" onclick="handleTx('return')">return</button>
+        </div>
+    </div>
+
+    <div id="scanner-modal">
+        <div id="reader"></div>
+        <button class="close-scanner" onclick="closeScanner()">Cancel</button>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        // Your specific config from config.js
+        const firebaseConfig = {
+            apiKey: "AIzaSyCklU7HYXiz5ZHQ5bo6maEHJtnTD8v139I",
+            authDomain: "e-lib-a32b1.firebaseapp.com",
+            projectId: "e-lib-a32b1",
+            storageBucket: "e-lib-a32b1.appspot.com",
+            messagingSenderId: "516724940823",
+            appId: "1:516724940823:web:39dfbbe3aee866aea9fc52"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        let activeInputId = '';
+        let html5QrcodeScanner = null;
+
+        // Open Scanner
+        window.openScanner = (inputId) => {
+            activeInputId = inputId;
+            document.getElementById('scanner-modal').style.display = 'flex';
+            
+            html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 });
+            html5QrcodeScanner.render((text) => {
+                document.getElementById(activeInputId).value = text;
+                closeScanner();
+            });
+        };
+
+        // Close Scanner
+        window.closeScanner = () => {
+            if (html5QrcodeScanner) {
+                html5QrcodeScanner.clear();
+            }
+            document.getElementById('scanner-modal').style.display = 'none';
+        };
+
+        // Borrow / Return Logic
+        window.handleTx = async (type) => {
+            const studentId = document.getElementById('studentId').value;
+            const isbn = document.getElementById('isbn').value;
+
+            if (!studentId || !isbn) return alert("Fill both fields first!");
+
+            try {
+                await addDoc(collection(db, "transactions"), {
+                    studentId,
+                    bookId: isbn,
+                    type: type,
+                    timestamp: serverTimestamp()
+                });
+                alert(`Book ${type}ed successfully!`);
+                document.getElementById('studentId').value = '';
+                document.getElementById('isbn').value = '';
+            } catch (e) {
+                console.error(e);
+                alert("Error saving to Firebase. Check console.");
+            }
+        };
+    </script>
+</body>
+</html>
